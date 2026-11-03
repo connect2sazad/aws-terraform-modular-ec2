@@ -43,6 +43,30 @@ variable "volume_size" {
   type = number
 }
 
+variable "available_user_data_plugins" {
+  description = "List of Available User Data Plugins."
+
+  type = list(string)
+
+  validation {
+    condition     = length(var.available_user_data_plugins) > 0
+    error_message = "The User Data plugin list cannot be empty."
+  }
+}
+
 variable "user_data_plugin" {
+  description = "Select the User Data installation script."
+
   type = string
+
+  validation {
+    
+    condition = contains(
+      var.available_user_data_plugins,
+      var.user_data_plugin
+    )
+    
+    error_message = "Select a supported plugin from the list ${var.available_user_data_plugins}"
+  }
+
 }

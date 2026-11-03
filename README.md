@@ -63,7 +63,7 @@ The `ud-plugins/` directory contains shell scripts used to install and configure
 | `docker` | Installs and configures Docker. |
 | `kind+kubectl` | Installs Kind and kubectl for Kubernetes environments. |
 
-Additional installation scripts can be added to this directory.
+Additional installation scripts can be added to this directory. Once you add the installation script, make sure you register the script file name without ".sh" to `available_user_data_plugins` variable in `terraform.tfvars`
 
 > **Important:** The plugin selection controls the User Data script used during EC2 provisioning. It is not a runtime plugin manager. Changing the selected plugin may cause Terraform to replace the existing EC2 instance, depending on the resource configuration.
 
