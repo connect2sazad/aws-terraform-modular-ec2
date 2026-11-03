@@ -165,6 +165,17 @@ echo.
 echo Connecting to Ubuntu instance...
 echo.
 
+echo.
+echo Configuring SSH private key permissions...
+
+:: Remove inherited permissions
+icacls "id_ed25519" /inheritance:r
+
+:: Grant access only to current user
+icacls "id_ed25519" /grant:r "%USERNAME%:R"
+
+echo SSH key permissions configured.
+
 ssh -i id_ed25519 ubuntu@!INSTANCE_IP!
 
 if errorlevel 1 (

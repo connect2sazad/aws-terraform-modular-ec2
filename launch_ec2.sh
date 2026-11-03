@@ -135,9 +135,13 @@ echo
 
 echo "[6/6] Fetching EC2 public IP..."
 
-INSTANCE_IP=$(terraform output -json instance_public_ip 2>/dev/null | jq -r '.[0] // empty' 2>/dev/null || true)
+INSTANCE_IP=$(
+    terraform output instance_public_ip 2>/dev/null |
+    sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' |
+    head -n 1
+)
 
-if [ -z "$INSTANCE_IP" ] || [ "$INSTANCE_IP" = "null" ]; then
+if [ -z "$INSTANCE_IP" ]; then
     echo
     echo "WARNING: Could not retrieve EC2 public IP."
     echo "Infrastructure was deployed successfully."
