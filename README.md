@@ -1,37 +1,133 @@
+# AWS Terraform Modular EC2 Infrastructure
 
-# Fresh EC2 with Docker Setup using Terraform
+Automate the provisioning and initial configuration of AWS EC2 instances with Terraform and reusable, variable-driven User Data scripts.
 
-Automate the creation of an AWS EC2 instance and install Docker using Terraform.
+This project uses one reusable Terraform configuration to provision EC2 infrastructure and install different tools by changing the `user_data_plugin` variable. Instead of maintaining separate Terraform configurations for each environment, select an installation script and customize the instance through Terraform variables.
 
-**Portfolio:** [https://connect2sazad.github.io/](https://connect2sazad.github.io/)
+**Portfolio:** <https://connect2sazad.github.io/>  
+**GitLab:** <https://gitlab.com/connect2sazad/aws-terraform-modular-ec2>  
+**GitHub:** <https://github.com/connect2sazad/aws-terraform-modular-ec2>
 
-**GitHub Repository:** [fresh-ec2-with-docker-setup](https://github.com/connect2sazad/fresh-ec2-with-docker-setup)
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Available User Data Plugins](#available-user-data-plugins)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+  - [1. Clone the Repository](#1-clone-the-repository)
+  - [2. Generate an SSH Key Pair](#2-generate-an-ssh-key-pair)
+  - [3. Configure SSH Key Files](#3-configure-ssh-key-files)
+  - [4. Install AWS CLI](#4-install-aws-cli)
+  - [5. Configure AWS Access](#5-configure-aws-access)
+  - [6. Configure AWS CLI](#6-configure-aws-cli)
+  - [7. Install Terraform](#7-install-terraform)
+  - [8. Initialize Terraform](#8-initialize-terraform)
+  - [9. Select a User Data Plugin](#9-select-a-user-data-plugin)
+  - [10. Start EC2 Using Automation Scripts](#10-start-ec2-using-automation-scripts)
+  - [11. Validate the Configuration](#11-validate-the-configuration)
+  - [12. Create a Terraform Plan](#12-create-a-terraform-plan)
+  - [13. Create the EC2 Instance](#13-create-the-ec2-instance)
+  - [14. Connect to the EC2 Instance](#14-connect-to-the-ec2-instance)
+  - [15. Verify the Installation](#15-verify-the-installation)
+  - [16. Destroy the Infrastructure](#16-destroy-the-infrastructure)
+- [Important Note About User Data Changes](#important-note-about-user-data-changes)
+- [Troubleshooting](#troubleshooting)
+- [Best Practices](#best-practices)
+- [Future Improvements](#future-improvements)
+- [Useful Resources](#useful-resources)
+- [Author](#author)
+
+## Features
+
+- Modular Terraform infrastructure.
+- Variable-driven User Data script selection.
+- Reusable EC2 instance configuration.
+- Automated software installation during EC2 initialization.
+- Configurable EC2 instance types.
+- Configurable EBS volume sizes.
+- Customizable EC2 instance names, roles, and environments.
+- AWS security group and SSH key pair integration.
+- Easy addition of new installation scripts.
+- Automated EC2 provisioning using Windows batch scripts.
+- Linux/macOS support through Bash automation scripts.
+
+## Available User Data Plugins
+
+The `ud-plugins/` directory contains shell scripts used to install and configure tools on the EC2 instance.
+
+| Plugin | Description |
+|---|---|
+| `docker` | Installs and configures Docker. |
+| `kind+kubectl` | Installs Kind and kubectl for Kubernetes environments. |
+
+Additional installation scripts can be added to this directory.
+
+> **Important:** The plugin selection controls the User Data script used during EC2 provisioning. It is not a runtime plugin manager. Changing the selected plugin may cause Terraform to replace the existing EC2 instance, depending on the resource configuration.
+
+## Project Structure
+
+```text
+aws-terraform-modular-ec2/
+│
+├── ud-plugins/
+│   ├── docker.sh
+│   └── kind+kubectl.sh
+│
+├── .gitignore
+├── data-source.tf
+├── ec2.tf
+├── key-pair.tf
+├── LICENSE
+├── main.tf
+├── outputs.tf
+├── provider.tf
+├── security_groups.tf
+|
+├── launch_ec2.bat
+├── destroy_ec2.bat
+├── launch_ec2.sh
+├── destroy_ec2.sh
+|
+├── terraform.tf
+├── terraform.tfvars
+├── variables.tf
+└── README.md
+```
+
+> The exact Terraform filenames may vary as the project evolves.
 
 ## Prerequisites
 
-Before getting started, ensure you have:
+Before getting started, make sure you have:
 
 - An AWS account.
-- Git and Git Bash installed (Windows users).
+- Git and Git Bash (for Windows users).
 - AWS CLI installed.
 - Terraform installed.
 - An SSH key pair.
-- Basic knowledge of AWS, EC2, SSH, and Terraform.
+- Basic familiarity with AWS, EC2, SSH, and Terraform.
 
-> **Note:** AWS resources may incur charges. Destroy resources when they are no longer needed.
+> **Cost warning:** AWS resources may incur charges while they are running. Destroy resources when they are no longer required.
 
-## Step 1: Clone the Repository
+## Getting Started
 
-Open Git Bash or your terminal and run:
+### 1. Clone the Repository
+
+Open Git Bash or a terminal and clone the repository:
 
 ```bash
-git clone https://github.com/connect2sazad/fresh-ec2-with-docker-setup.git
-cd fresh-ec2-with-docker-setup
+git clone https://gitlab.com/connect2sazad/aws-terraform-modular-ec2.git
+cd aws-terraform-modular-ec2
 ```
 
-## Step 2: Generate an SSH Key Pair
+You can also clone the project from the [GitHub repository](https://github.com/connect2sazad/aws-terraform-modular-ec2).
 
-Run the following command inside the repository directory:
+### 2. Generate an SSH Key Pair
+
+Run the following command from the repository directory:
 
 ```bash
 ssh-keygen -t ed25519 -C "your_email@example.com" -f id_ed25519
@@ -39,50 +135,51 @@ ssh-keygen -t ed25519 -C "your_email@example.com" -f id_ed25519
 
 Replace `your_email@example.com` with your email address.
 
-This generates two files:
+This creates two files:
 
-- `id_ed25519` — Private key.
-- `id_ed25519.pub` — Public key.
+| File | Purpose |
+|---|---|
+| `id_ed25519` | Private key. Keep this secret. |
+| `id_ed25519.pub` | Public key. Terraform uses this to configure EC2 SSH access. |
 
-Never share or commit your private key.
+**Never share or commit your private key.**
 
-## Step 3: Configure the SSH Key Files
+### 3. Configure SSH Key Files
 
-Ensure the public key path in your Terraform configuration matches `id_ed25519.pub`.
+Make sure the public key path in your Terraform configuration points to `id_ed25519.pub`.
 
-Your repository may look like this:
+For example, the key-pair resource may look like this:
 
-```text
-fresh-ec2-with-docker-setup/
-├── id_ed25519
-├── id_ed25519.pub
-├── main.tf
-├── variables.tf
-├── outputs.tf
-└── .gitignore
+```hcl
+resource "aws_key_pair" "terraform_aws_key" {
+  key_name   = var.keypair_name
+  public_key = file("${path.module}/id_ed25519.pub")
+}
 ```
 
-The Terraform filenames may differ depending on the repository configuration.
-
-Make sure `.gitignore` excludes sensitive and generated files:
+Ensure your `.gitignore` excludes sensitive and generated files. For example:
 
 ```gitignore
 id_ed25519
+id_ed25519.pub
 *.tfstate
 *.tfstate.*
 *.tfplan
 tfplan
 .terraform/
-.terraform.lock.hcl
+crash.log
+crash.*.log
 ```
 
-If you commit `.terraform.lock.hcl` to version control for reproducible provider installations, remove that entry from `.gitignore`.
+You can commit `.terraform.lock.hcl` to help keep provider selections consistent across environments.
 
-Never commit private keys, AWS credentials, Terraform state, or sensitive plan files.
+Never commit private keys, AWS credentials, Terraform state files, or sensitive plan files.
 
-## Step 4: Install AWS CLI
+### 4. Install AWS CLI
 
-### Windows
+Install the AWS CLI for your operating system.
+
+#### Windows
 
 Run in PowerShell:
 
@@ -92,13 +189,13 @@ Invoke-WebRequest -Uri "https://awscli.amazonaws.com/AWSCLIV2.msi" -OutFile "$en
 Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\AWSCLIV2.msi`" /qn" -Wait
 ```
 
-Verify:
+Verify the installation:
 
 ```powershell
 aws --version
 ```
 
-### Linux (x86_64)
+#### Linux (x86_64)
 
 ```bash
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -107,7 +204,7 @@ sudo ./aws/install
 aws --version
 ```
 
-### macOS
+#### macOS
 
 ```bash
 curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
@@ -115,36 +212,26 @@ sudo installer -pkg AWSCLIV2.pkg -target /
 aws --version
 ```
 
-Official guide: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+Official guide: [Installing or updating the latest version of the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html).
 
-## Step 5: Configure AWS Access
+### 5. Configure AWS Access
 
-Prefer AWS IAM Identity Center or an approved IAM role with temporary credentials when available.
+Use a secure method to provide Terraform and the AWS CLI with credentials.
 
-Alternatively, create an IAM user in the AWS Console:
+Prefer AWS IAM Identity Center or an approved IAM role with temporary credentials whenever possible.
+
+Alternatively, an IAM user with programmatic credentials may be used if that is appropriate for your environment:
 
 1. Open the [AWS IAM Console](https://console.aws.amazon.com/iam/).
 2. Navigate to **Users** and select **Create user**.
 3. Enter a username.
-4. Leave AWS Management Console access disabled if the user only needs programmatic access.
-5. Assign the minimum permissions required by the Terraform configuration.
-6. Create the user.
+4. Configure programmatic access using the appropriate credentials workflow.
+5. Assign only the permissions required by your Terraform configuration.
+6. Store generated credentials securely.
 
-Avoid unrestricted administrator permissions unless explicitly required and approved.
+Avoid unrestricted administrator permissions unless they are explicitly required and approved.
 
-## Step 6: Generate AWS Access Keys
-
-If using an IAM user's access keys:
-
-1. Open the user in IAM.
-2. Select **Security credentials**.
-3. Under **Access keys**, select **Create access key**.
-4. Choose the appropriate use case for local development.
-5. Follow the prompts and securely save the credentials.
-
-Do not share or commit your access keys.
-
-## Step 7: Configure the AWS CLI
+### 6. Configure AWS CLI
 
 Run:
 
@@ -152,9 +239,9 @@ Run:
 aws configure
 ```
 
-Enter your credentials and preferred AWS region when prompted.
+Enter your AWS credentials and preferred region when prompted.
 
-For example:
+Example:
 
 ```text
 AWS Access Key ID: YOUR_ACCESS_KEY_ID
@@ -165,17 +252,17 @@ Default output format: json
 
 Replace `ap-south-1` with your intended AWS region.
 
-Verify your AWS identity:
+Verify the active AWS identity:
 
 ```bash
 aws sts get-caller-identity
 ```
 
-## Step 8: Install Terraform
+Make sure the returned account and identity are the ones in which you intend to create resources.
 
-Install Terraform by following the official guide:
+### 7. Install Terraform
 
-https://developer.hashicorp.com/terraform/install
+Install Terraform by following the [official HashiCorp installation guide](https://developer.hashicorp.com/terraform/install).
 
 Verify the installation:
 
@@ -183,31 +270,173 @@ Verify the installation:
 terraform -version
 ```
 
-## Step 9: Initialize Terraform
+### 8. Initialize Terraform
 
-Navigate to the repository directory:
+From the repository directory, run:
 
 ```bash
-cd fresh-ec2-with-docker-setup
 terraform init
 ```
 
-## Step 10: Validate the Configuration
+This initializes the Terraform working directory and downloads the required providers.
 
-Format and validate the Terraform files:
+### 9. Select a User Data Plugin
+
+One of the main features of this project is variable-driven User Data script selection.
+
+Instead of modifying the EC2 resource or maintaining separate Terraform configurations, change the `user_data_plugin` variable in `terraform.tfvars`.
+
+#### Example: Docker installation
+
+```hcl
+user_data_plugin = "docker"
+machine_type     = "t3.micro"
+volume_size      = 10
+```
+
+#### Example: Kubernetes tools installation
+
+```hcl
+user_data_plugin = "kind+kubectl"
+machine_type     = "t3.medium"
+volume_size      = 30
+```
+
+Terraform selects the matching shell script using the configured variable. The EC2 resource can use an expression such as:
+
+```hcl
+user_data = file("${path.module}/ud-plugins/${var.user_data_plugin}.sh")
+```
+
+The mapping is:
+
+| Variable value | Script selected |
+|---|---|
+| `docker` | `ud-plugins/docker.sh` |
+| `kind+kubectl` | `ud-plugins/kind+kubectl.sh` |
+
+To add another installation option:
+
+1. Create a new `.sh` script inside `ud-plugins/`.
+2. Add the required installation and configuration commands to it.
+3. Set `user_data_plugin` to the script filename without the `.sh` extension.
+
+For example, `ud-plugins/nginx.sh` can be selected with:
+
+```hcl
+user_data_plugin = "nginx"
+```
+
+**Make sure the selected script exists before running Terraform.**
+
+### 10. Start EC2 Using Automation Scripts
+
+This project includes automated scripts for both Windows and Linux/macOS users.
+
+These scripts simplify the Terraform workflow by automating infrastructure initialization, validation, deployment, and destruction.
+
+#### Windows
+
+Windows users can execute the following batch files from the project directory.
+
+**Start EC2**
+
+```bat
+launch_ec2.bat
+```
+
+**Stop EC2**
+
+```bat
+destroy_ec2.bat
+```
+
+The batch files automate the respective Terraform operations. Make sure AWS CLI credentials and Terraform are configured before execution.
+
+#### Linux / macOS
+
+Linux and macOS users can use the Bash scripts.
+
+First, provide execution permissions:
+
+```bash
+chmod +x launch_ec2.sh destroy_ec2.sh
+```
+
+**Start EC2**
+
+```bash
+./launch_ec2.sh
+```
+
+The startup script performs the following operations:
+
+1. Checks whether Terraform is installed.
+2. Checks whether AWS CLI is installed.
+3. Validates AWS credentials using `aws sts get-caller-identity`.
+4. Checks whether the SSH client is installed.
+5. Verifies that the `id_ed25519` private key exists.
+6. Checks for Terraform configuration files.
+7. Initializes Terraform if it has not already been initialized.
+8. Formats Terraform configuration files.
+9. Validates the Terraform configuration.
+10. Generates a Terraform execution plan.
+11. Applies the Terraform configuration.
+12. Retrieves the EC2 instance's public IP address.
+13. Provides an option to connect to the instance through SSH.
+
+After deployment, the script displays the EC2 public IP.
+
+You will be prompted:
+
+- Press **ENTER** to connect to the EC2 instance using SSH.
+- Press any other key to exit.
+
+The SSH connection uses:
+
+```bash
+ssh -i id_ed25519 ubuntu@<AWS-EC2-PUBLIC-IP>
+```
+
+**Stop EC2**
+
+```bash
+./destroy_ec2.sh
+```
+
+This script automatically destroys the Terraform-managed infrastructure.
+
+#### Important Notes
+
+- Execute scripts from the root directory of the Terraform project.
+- Ensure AWS CLI credentials are configured.
+- Ensure the SSH private key exists before running the startup script.
+- The startup script assumes the Terraform output is named `instance_public_ip`.
+- The SSH connection assumes an Ubuntu EC2 instance.
+- Review your Terraform configuration and AWS environment before deployment.
+
+### 11. Validate the Configuration
+
+Format and validate the Terraform configuration:
 
 ```bash
 terraform fmt -recursive
 terraform validate
 ```
 
-Check the AWS region, AMI, instance type, SSH public key path, and security group rules.
+Before proceeding, check:
 
-Ensure SSH access on port `22` is restricted to your trusted public IP address.
+- AWS region and AMI configuration.
+- EC2 instance type.
+- SSH public key path.
+- Security group rules.
+- Selected User Data plugin and script path.
 
-## Step 11: Create a Terraform Plan
+Ensure SSH access on port `22` is restricted to your trusted public IP address rather than exposed to the entire internet.
 
-Generate the execution plan:
+### 12. Create a Terraform Plan
+
+Generate an execution plan:
 
 ```bash
 terraform plan -out=tfplan
@@ -215,9 +444,9 @@ terraform plan -out=tfplan
 
 Review the proposed changes before applying them.
 
-Treat the plan file as potentially sensitive and never commit it to Git.
+Treat the plan file as potentially sensitive. Do not commit it to Git.
 
-## Step 12: Create the EC2 Instance
+### 13. Create the EC2 Instance
 
 Apply the reviewed plan:
 
@@ -225,13 +454,15 @@ Apply the reviewed plan:
 terraform apply tfplan
 ```
 
-Terraform will create the AWS resources defined in your configuration.
+Terraform provisions the AWS resources defined in the configuration.
 
-Depending on the configuration, the EC2 instance may also install Docker automatically.
+During the EC2 instance's initial launch, the instance executes the selected User Data script. Depending on the selected plugin, the corresponding tools are installed automatically.
 
 Wait for Terraform to finish successfully.
 
-## Step 13: Connect to the EC2 Instance
+> **Important:** Terraform completing successfully does not necessarily mean all User Data commands have finished. Allow instance initialization to complete before verifying the software installation.
+
+### 14. Connect to the EC2 Instance
 
 Check the Terraform outputs:
 
@@ -251,71 +482,131 @@ Connect to the instance:
 ssh -i id_ed25519 ubuntu@<AWS-EC2-PUBLIC-IP>
 ```
 
-Replace `<AWS-EC2-PUBLIC-IP>` with the actual public IP address.
+Replace `<AWS-EC2-PUBLIC-IP>` with the instance's actual public IP address.
 
-This example assumes the instance uses Ubuntu and the private key is named `id_ed25519`.
+This example assumes an Ubuntu AMI and the default Ubuntu SSH username. Other AMIs may use a different SSH username.
 
-If required on Linux or macOS, restrict private key permissions:
+On Linux or macOS, if required, restrict private key permissions:
 
 ```bash
 chmod 600 id_ed25519
 ```
 
-## Step 14: Verify Docker
+### 15. Verify the Installation
 
-Once connected, check the Docker installation:
+The verification steps depend on the selected User Data plugin.
+
+#### Docker
+
+Check the Docker version:
 
 ```bash
 docker --version
 ```
 
-Check whether the Docker service is running:
+Check the Docker service:
 
 ```bash
 sudo systemctl status docker
 ```
 
-Test Docker:
+Run a test container:
 
 ```bash
 sudo docker run hello-world
 ```
 
-If you want to use Docker without `sudo`, you can add your user to the Docker group:
+If you want to run Docker without `sudo`, you can add your user to the Docker group:
 
 ```bash
 sudo usermod -aG docker "$USER"
 ```
 
-Log out and reconnect for the change to take effect.
+Log out and reconnect for the group change to take effect.
 
-**Security note:** Membership in the Docker group grants highly privileged access to the host.
+> **Security note:** Membership in the Docker group grants highly privileged access to the host.
 
-## Step 15: Destroy the Infrastructure
+#### Kubernetes (Kind + kubectl)
 
-When you no longer need the EC2 instance, run:
+Check kubectl:
+
+```bash
+kubectl version --client
+```
+
+Check Kind:
+
+```bash
+kind version
+```
+
+If your plugin creates a Kind cluster, list the clusters:
+
+```bash
+kind get clusters
+```
+
+Check Kubernetes nodes:
+
+```bash
+kubectl get nodes
+```
+
+Refer to the selected plugin script for the exact installation and cluster initialization steps. The commands above verify the tools and, where applicable, the cluster created by the script.
+
+### 16. Destroy the Infrastructure
+
+When you no longer need the EC2 instance and other Terraform-managed resources, you can destroy the infrastructure using the automated scripts.
+
+**Windows:**
+
+```bat
+destroy_ec2.bat
+```
+
+**Linux / macOS:**
+
+```bash
+./destroy_ec2.sh
+```
+
+Both scripts execute:
+
+```bash
+terraform destroy --auto-approve
+```
+
+This automatically destroys the infrastructure managed by the active Terraform configuration without requesting interactive confirmation.
+
+Alternatively, you can manually destroy the infrastructure:
 
 ```bash
 terraform destroy
 ```
 
-Review the proposed deletions and confirm when prompted.
+Terraform will display the resources scheduled for deletion and ask for confirmation.
 
-For automated environments, you can use:
+> **Warning:** The automated stop scripts use `-auto-approve`. Always verify your AWS account, region, Terraform workspace, and state before executing them.
 
-```bash
-terraform destroy -auto-approve
-```
+After destruction, check the AWS Console for resources that may exist outside Terraform's management.
 
-Use the non-interactive command only after confirming the AWS account, region, and Terraform workspace.
+## Important Note About User Data Changes
 
-Check the AWS Console afterward for resources that might remain outside Terraform's management.
+The `user_data` configuration in this project is intended for initial EC2 provisioning.
+
+Changing `user_data_plugin` after an instance has already been created does **not** mean Terraform will simply rerun the new installation script on that existing machine. Depending on the AWS provider configuration and resource lifecycle behavior, a User Data change may cause the EC2 instance to be replaced.
+
+Always review the Terraform plan before applying a plugin change. If Terraform proposes replacing the instance, remember that replacement can interrupt services and may affect data stored on resources that are not persistent.
+
+For repeatable configuration management on existing instances, consider a dedicated configuration-management or deployment approach rather than assuming EC2 User Data will rerun automatically.
 
 ## Troubleshooting
 
 ### Terraform command not found
 
-Ensure Terraform is installed and available in your system's PATH.
+- Confirm Terraform is installed.
+- Ensure the Terraform executable is available in your system's `PATH`.
+- Reopen the terminal after installation if necessary.
 
 ### AWS access denied
 
@@ -325,15 +616,43 @@ Check the active AWS identity:
 aws sts get-caller-identity
 ```
 
-Verify the region and required IAM permissions.
+Then verify that:
+
+- The intended AWS account is active.
+- The configured region is correct.
+- The IAM identity has the permissions required by the Terraform configuration.
 
 ### SSH connection timed out
 
-Check the instance status, public IP, security group, subnet routing, and internet gateway.
+Check:
+
+- EC2 instance state and status checks.
+- Public IP address.
+- Security group inbound rules.
+- Subnet routing.
+- Internet gateway configuration.
+- Network ACL rules, if applicable.
 
 ### Permission denied (publickey)
 
-Ensure the private key matches the configured public key and that you are using the correct SSH username.
+- Confirm the private key matches the public key registered with EC2.
+- Confirm the correct private key is being used.
+- Confirm the SSH username matches the AMI.
+- Check private key file permissions.
+
+### User Data script did not execute successfully
+
+Check the EC2 initialization output:
+
+```bash
+sudo cat /var/log/cloud-init-output.log
+```
+
+Check cloud-init status:
+
+```bash
+sudo cloud-init status --long
+```
 
 ### Docker is not running
 
@@ -341,36 +660,76 @@ Inspect the Docker service:
 
 ```bash
 sudo systemctl status docker
+```
+
+Review recent Docker service logs:
+
+```bash
 sudo journalctl -u docker --no-pager -n 100
 ```
+
+### Selected plugin file not found
+
+Make sure the selected script exists inside `ud-plugins/`.
+
+For example, this configuration:
+
+```hcl
+user_data_plugin = "docker"
+```
+
+requires this file:
+
+```text
+ud-plugins/docker.sh
+```
+
+Also check spelling and capitalization because file paths are case-sensitive on Linux.
 
 ## Best Practices
 
 - Prefer temporary AWS credentials.
-- Use least-privilege IAM permissions.
+- Follow the principle of least privilege for IAM permissions.
 - Never commit private keys or AWS credentials.
+- Never commit Terraform state or sensitive plan files.
 - Review Terraform plans before applying changes.
 - Restrict SSH access to trusted IP addresses.
 - Use remote Terraform state with appropriate access controls for collaborative projects.
-- Monitor AWS costs.
-- Destroy unused resources.
+- Keep installation scripts modular and maintainable.
+- Test new User Data scripts before using them in production.
+- Monitor AWS resource usage and costs.
+- Destroy unused infrastructure.
+
+## Future Improvements
+
+- Add more User Data installation plugins.
+- Support additional DevOps tools and technologies.
+- Introduce reusable Terraform modules.
+- Add automated deployment through GitLab CI/CD.
+- Implement remote Terraform state management.
+- Improve infrastructure validation and security checks.
 
 ## Useful Resources
 
-- [Portfolio](https://connect2sazad.github.io/)
-- [GitHub Repository](https://github.com/connect2sazad/fresh-ec2-with-docker-setup)
-- [AWS CLI Documentation](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-- [AWS IAM Documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html)
-- [Amazon EC2 Documentation](https://docs.aws.amazon.com/ec2/)
-- [Terraform Documentation](https://developer.hashicorp.com/terraform/docs)
-- [Docker Documentation](https://docs.docker.com/)
+| Resource | Link |
+|---|---|
+| Portfolio | https://connect2sazad.github.io/ |
+| GitLab Repository | https://gitlab.com/connect2sazad/aws-terraform-modular-ec2 |
+| GitHub Repository | https://github.com/connect2sazad/aws-terraform-modular-ec2 |
+| AWS CLI Documentation | https://docs.aws.amazon.com/cli/latest/userguide/ |
+| AWS IAM Documentation | https://docs.aws.amazon.com/iam/ |
+| Amazon EC2 Documentation | https://docs.aws.amazon.com/ec2/ |
+| Terraform Documentation | https://developer.hashicorp.com/terraform/docs |
+| Docker Documentation | https://docs.docker.com/ |
+| Kind Documentation | https://kind.sigs.k8s.io/ |
+| Kubernetes Documentation | https://kubernetes.io/docs/ |
 
 ## Author
 
 **Sazad**
 
-Portfolio: https://connect2sazad.github.io/
-
-GitHub: https://github.com/connect2sazad
+- **Portfolio:** https://connect2sazad.github.io/
+- **GitHub:** https://github.com/connect2sazad
+- **GitLab:** https://gitlab.com/connect2sazad
 
 If you find this project useful, consider giving the repository a ⭐.
