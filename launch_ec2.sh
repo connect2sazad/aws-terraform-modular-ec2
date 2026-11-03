@@ -9,6 +9,10 @@ echo "       TERRAFORM PRE-FLIGHT CHECK"
 echo "======================================"
 echo
 
+# ======================================
+# PRE-FLIGHT CHECKS
+# ======================================
+
 # Check Terraform
 echo "[CHECK] Terraform..."
 if ! command -v terraform >/dev/null 2>&1; then
@@ -67,10 +71,17 @@ echo "       ALL CHECKS PASSED"
 echo "======================================"
 echo
 
+# ======================================
+# TERRAFORM DEPLOYMENT
+# ======================================
+
 # Initialize Terraform if not initialized
 if [ ! -d ".terraform" ]; then
     echo "[1/6] Initializing Terraform..."
-    terraform init
+    if ! terraform init; then
+        echo "ERROR: Terraform initialization failed."
+        exit 1
+    fi
 else
     echo "[1/6] Terraform already initialized. Skipping init."
 fi
@@ -78,32 +89,60 @@ fi
 # Format Terraform files
 echo
 echo "[2/6] Formatting Terraform files..."
-terraform fmt -recursive
+if ! terraform fmt -recursive; then
+    echo "ERROR: Terraform formatting failed."
+    exit 1
+fi
 
 # Validate Terraform configuration
 echo
 echo "[3/6] Validating Terraform configuration..."
-terraform validate
+if ! terraform validate; then
+    echo "ERROR: Terraform validation failed."
+    exit 1
+fi
 
 # Create Terraform plan
 echo
 echo "[4/6] Creating Terraform plan..."
-terraform plan -out=tfplan
+if ! terraform plan -out=tfplan; then
+    echo "ERROR: Terraform plan failed."
+    exit 1
+fi
 
 # Apply Terraform plan
 echo
 echo "[5/6] Applying Terraform configuration..."
-terraform apply --auto-approve tfplan
+if ! terraform apply --auto-approve tfplan; then
+    echo "ERROR: Terraform apply failed."
+    echo "Infrastructure deployment may be incomplete."
+    exit 1
+fi
 
-# Get EC2 public IP
+# ======================================
+# DEPLOYMENT SUCCESSFUL
+# ======================================
+
 echo
+echo "======================================"
+echo "    TERRAFORM DEPLOYMENT SUCCESSFUL!"
+echo "======================================"
+echo
+
+# ======================================
+# GET EC2 PUBLIC IP
+# ======================================
+
 echo "[6/6] Fetching EC2 public IP..."
 
-INSTANCE_IP=$(terraform output -raw instance_public_ip)
+INSTANCE_IP=$(terraform output -json instance_public_ip 2>/dev/null | jq -r '.[0] // empty' 2>/dev/null || true)
 
-if [ -z "$INSTANCE_IP" ]; then
-    echo "ERROR: Could not retrieve EC2 public IP."
-    exit 1
+if [ -z "$INSTANCE_IP" ] || [ "$INSTANCE_IP" = "null" ]; then
+    echo
+    echo "WARNING: Could not retrieve EC2 public IP."
+    echo "Infrastructure was deployed successfully."
+    echo "Run: terraform output instance_public_ip"
+    exit 0
 fi
 
 echo
@@ -113,15 +152,37 @@ echo " $INSTANCE_IP"
 echo "======================================"
 echo
 
-# Interactive SSH or Exit
+# ======================================
+# SSH OR EXIT
+# ======================================
+
 read -n 1 -s -r -p "Press ENTER to SSH or any other key to exit..."
 
 if [[ "$REPLY" == "" ]]; then
     echo
     echo "Connecting to Ubuntu instance..."
-    ssh -i id_ed25519 ubuntu@"$INSTANCE_IP"
+    echo
+
+    if ssh -i id_ed25519 ubuntu@"$INSTANCE_IP"; then
+        echo
+        echo "SSH session completed."
+    else
+        echo
+        echo "WARNING: SSH connection failed."
+        echo "Infrastructure remains deployed successfully."
+    fi
 else
     echo
     echo "Exiting..."
-    exit 0
 fi
+
+# ======================================
+# POST DEPLOYMENT COMPLETED
+# ======================================
+
+echo
+echo "======================================"
+echo "       DEPLOYMENT COMPLETED"
+echo "======================================"
+echo "Terraform infrastructure deployed successfully."
+echo

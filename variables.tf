@@ -60,13 +60,20 @@ variable "user_data_plugin" {
   type = string
 
   validation {
-    
     condition = contains(
       var.available_user_data_plugins,
       var.user_data_plugin
     )
-    
-    error_message = "Select a supported plugin from the list ${var.available_user_data_plugins}"
-  }
 
+    error_message = <<-EOT
+      INVALID USER DATA PLUGIN!
+
+      AVAILABLE PLUGINS:
+      ------------------
+      ${join("\n      ", var.available_user_data_plugins)}
+
+      ------------------
+      Please select one of the available plugins.
+    EOT
+  }
 }

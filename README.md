@@ -26,7 +26,7 @@ This project uses one reusable Terraform configuration to provision EC2 infrastr
   - [7. Install Terraform](#7-install-terraform)
   - [8. Initialize Terraform](#8-initialize-terraform)
   - [9. Select a User Data Plugin](#9-select-a-user-data-plugin)
-  - [10. Start EC2 Using Automation Scripts](#10-start-ec2-using-automation-scripts)
+  - [10. Launch EC2 Using Automation Scripts](#10-start-ec2-using-automation-scripts)
   - [11. Validate the Configuration](#11-validate-the-configuration)
   - [12. Create a Terraform Plan](#12-create-a-terraform-plan)
   - [13. Create the EC2 Instance](#13-create-the-ec2-instance)
@@ -329,7 +329,7 @@ user_data_plugin = "nginx"
 
 **Make sure the selected script exists before running Terraform.**
 
-### 10. Start EC2 Using Automation Scripts
+### 10. Launch EC2 Using Automation Scripts
 
 This project includes automated scripts for both Windows and Linux/macOS users.
 
@@ -339,7 +339,7 @@ These scripts simplify the Terraform workflow by automating infrastructure initi
 
 Windows users can execute the following batch files from the project directory.
 
-**Start EC2**
+**Launch EC2**
 
 ```bat
 launch_ec2.bat
@@ -363,7 +363,7 @@ First, provide execution permissions:
 chmod +x launch_ec2.sh destroy_ec2.sh
 ```
 
-**Start EC2**
+**Launch EC2**
 
 ```bash
 ./launch_ec2.sh
