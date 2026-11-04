@@ -48,12 +48,6 @@ variable "available_user_data_plugins" {
   type        = list(string)
 
   validation {
-    condition     = length(var.available_user_data_plugins) > 0
-    error_message = "The User Data plugin list cannot be empty."
-  }
-}
-
-validation {
   condition = (
     length(trimspace(var.user_data_plugin_string)) > 0 &&
 
@@ -82,3 +76,5 @@ validation {
 
   error_message = "Invalid, duplicate, or empty plugin selection. Check plugin names and version syntax."
 }
+}
+
