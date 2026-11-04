@@ -44,9 +44,8 @@ variable "volume_size" {
 }
 
 variable "available_user_data_plugins" {
-  description = "List of Available User Data Plugins."
-
-  type = list(string)
+  description = "List of available user data plugins."
+  type        = list(string)
 
   validation {
     condition     = length(var.available_user_data_plugins) > 0
@@ -54,26 +53,32 @@ variable "available_user_data_plugins" {
   }
 }
 
-variable "user_data_plugin" {
-  description = "Select the User Data installation script."
+validation {
+  condition = (
+    length(trimspace(var.user_data_plugin_string)) > 0 &&
 
-  type = string
+    alltrue([
+      for plugin in split("+", var.user_data_plugin_string) :
+      contains(
+        var.available_user_data_plugins,
+        trimspace(split(":", trimspace(plugin))[0])
+      ) &&
+      length(split(":", trimspace(plugin))) <= 2 &&
+      (
+        length(split(":", trimspace(plugin))) == 1
+        ? true
+        : can(regex(
+            "^[A-Za-z0-9._+-]+$",
+            trimspace(split(":", trimspace(plugin))[1])
+          ))
+      )
+    ]) &&
 
-  validation {
-    condition = contains(
-      var.available_user_data_plugins,
-      var.user_data_plugin
-    )
+    length(distinct([
+      for plugin in split("+", var.user_data_plugin_string) :
+      trimspace(split(":", trimspace(plugin))[0])
+    ])) == length(split("+", var.user_data_plugin_string))
+  )
 
-    error_message = <<-EOT
-      INVALID USER DATA PLUGIN!
-
-      AVAILABLE PLUGINS:
-      ------------------
-      ${join("\n      ", var.available_user_data_plugins)}
-
-      ------------------
-      Please select one of the available plugins.
-    EOT
-  }
+  error_message = "Invalid, duplicate, or empty plugin selection. Check plugin names and version syntax."
 }

@@ -2,7 +2,7 @@
 
 Automate the provisioning and initial configuration of AWS EC2 instances with Terraform and reusable, variable-driven User Data scripts.
 
-This project uses one reusable Terraform configuration to provision EC2 infrastructure and install different tools by changing the `user_data_plugin` variable. Instead of maintaining separate Terraform configurations for each environment, select an installation script and customize the instance through Terraform variables.
+This project uses a reusable Terraform configuration to provision EC2 infrastructure and install different tools by selecting User Data plugin scripts. The selected plugins are configured through Terraform variables, allowing multiple tools to be installed on one EC2 instance.
 
 **Portfolio:** <https://connect2sazad.github.io/>  
 **GitLab:** <https://gitlab.com/connect2sazad/aws-terraform-modular-ec2>  
@@ -14,6 +14,10 @@ This project uses one reusable Terraform configuration to provision EC2 infrastr
 
 - [Features](#features)
 - [Available User Data Plugins](#available-user-data-plugins)
+  - [Supported Plugins](#supported-plugins)
+  - [Plugin Selection Syntax](#plugin-selection-syntax)
+  - [Version Selection Behavior](#version-selection-behavior)
+  - [Adding a New Plugin](#adding-a-new-plugin)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
@@ -25,15 +29,18 @@ This project uses one reusable Terraform configuration to provision EC2 infrastr
   - [6. Configure AWS CLI](#6-configure-aws-cli)
   - [7. Install Terraform](#7-install-terraform)
   - [8. Initialize Terraform](#8-initialize-terraform)
-  - [9. Select a User Data Plugin](#9-select-a-user-data-plugin)
-  - [10. Launch EC2 Using Automation Scripts](#10-start-ec2-using-automation-scripts)
+  - [9. Select User Data Plugins and Versions](#9-select-user-data-plugins-and-versions)
+  - [10. Launch EC2 Using Automation Scripts](#10-launch-ec2-using-automation-scripts)
   - [11. Validate the Configuration](#11-validate-the-configuration)
   - [12. Create a Terraform Plan](#12-create-a-terraform-plan)
   - [13. Create the EC2 Instance](#13-create-the-ec2-instance)
   - [14. Connect to the EC2 Instance](#14-connect-to-the-ec2-instance)
   - [15. Verify the Installation](#15-verify-the-installation)
   - [16. Destroy the Infrastructure](#16-destroy-the-infrastructure)
+- [How It Works](#how-it-works)
+- [Plugin Execution Workflow](#plugin-execution-workflow)
 - [Important Note About User Data Changes](#important-note-about-user-data-changes)
+- [Installation Logs](#installation-logs)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
 - [Future Improvements](#future-improvements)
@@ -42,39 +49,154 @@ This project uses one reusable Terraform configuration to provision EC2 infrastr
 
 ## Features
 
-- Modular Terraform infrastructure.
-- Variable-driven User Data script selection.
-- Reusable EC2 instance configuration.
-- Automated software installation during EC2 initialization.
-- Configurable EC2 instance types.
-- Configurable EBS volume sizes.
+- Modular, reusable Terraform infrastructure.
+- Variable-driven User Data plugin selection.
+- Terraform-side parsing of optional plugin version values and `PLUGIN_VERSION` injection.
+- Support for selecting multiple installation plugins for one EC2 instance.
+- Reusable and independently maintained installation scripts.
+- Configurable EC2 instance types and EBS volume sizes.
 - Customizable EC2 instance names, roles, and environments.
 - AWS security group and SSH key pair integration.
-- Easy addition of new installation scripts.
+- GMT-timestamped installation logs.
+- Installation duration tracking.
+- Automated software installation during EC2 initialization.
 - Automated EC2 provisioning using Windows batch scripts.
 - Linux/macOS support through Bash automation scripts.
 
+> **Version support status:** Terraform parses optional version suffixes and injects `PLUGIN_VERSION`. The current variable validation needs a fix before versioned entries are accepted, and each installation script must independently implement the requested-version behavior.
+
 ## Available User Data Plugins
 
-The `ud-plugins/` directory contains shell scripts used to install and configure tools on the EC2 instance.
+The `ud-plugins/` directory contains reusable shell scripts responsible for installing and configuring software on the EC2 instance.
+
+### Supported Plugins
 
 | Plugin | Description |
 |---|---|
-| `docker` | Installs and configures Docker. |
-| `kind+kubectl` | Installs Kind and kubectl for Kubernetes environments. |
+| `ansible` | Installs Ansible, Python, Boto3, Botocore, and AWS Ansible collection. |
+| `argocd` | Installs the Argo CD CLI. |
+| `awscli` | Installs AWS CLI v2. |
+| `docker` | Installs and configures Docker Engine and Docker Compose. |
+| `go` | Installs Go programming language. |
+| `helm` | Installs Helm Kubernetes package manager. |
+| `java` | Installs Java JDK. |
+| `jenkins` | Installs and configures Jenkins LTS. |
+| `kind_k8s` | Installs Kind Kubernetes. |
+| `kubectl` | Installs Kubernetes kubectl CLI. |
+| `terraform` | Installs HashiCorp Terraform. |
 
-Additional installation scripts can be added to this directory. Once you add the installation script, make sure you register the script file name without ".sh" to `available_user_data_plugins` variable in `terraform.tfvars`
+### Plugin Selection Syntax
 
-> **Important:** The plugin selection controls the User Data script used during EC2 provisioning. It is not a runtime plugin manager. Changing the selected plugin may cause Terraform to replace the existing EC2 instance, depending on the resource configuration.
+The plugin selection string is configured through `user_data_plugin_string`.
+
+Use `+` to combine plugins. Use `:` to separate a plugin name from its requested version:
+
+```text
+plugin_name
+plugin_name:version
+plugin_name+plugin_name
+plugin_name:version+plugin_name:version
+```
+
+**Examples:**
+
+| Configuration | Intended selection |
+|---|---|
+| `docker` | Docker, using the script's default behavior. |
+| `docker+go` | Docker and Go. |
+| `docker:27.5.1` | Docker with `PLUGIN_VERSION` set to `27.5.1`. |
+| `docker:27.5.1+go:1.23.4` | Docker and Go, each with its own requested version. |
+| `docker+kind_k8s+kubectl+helm` | Multiple Kubernetes-related tools. |
+
+The version values above are examples. Use versions that the corresponding installation scripts know how to install.
+
+### Version Selection Behavior
+
+The Terraform configuration in `ec2.tf` parses the plugin selection string and injects a `PLUGIN_VERSION` environment variable before each selected script.
+
+The implementation works as follows:
+
+1. `split("+", var.user_data_plugin_string)` separates the selected plugins.
+2. `trimspace(plugin)` removes surrounding whitespace from each plugin entry.
+3. `split(":", ...)` separates the plugin name from its optional version.
+4. The plugin name is used to load `ud-plugins/<plugin-name>.sh`.
+5. Terraform generates an `export PLUGIN_VERSION='<version>'` command immediately before that plugin's script content.
+6. `join("\n", ...)` combines the generated commands and script contents into `local.user_data`.
+7. The EC2 instance executes the generated User Data during initialization.
+
+For an unversioned plugin, Terraform sets `PLUGIN_VERSION` to an empty string. The installation script should treat an empty value as a request to use its default installation behavior.
+
+**Important distinction:** Terraform's version parsing and environment-variable injection are implemented. Actual explicit version installation depends on each plugin script reading `PLUGIN_VERSION` and using it in its installation commands. Do not claim that every plugin supports every version until each script has been checked and tested.
+
+#### Important validation limitation in the supplied `variables.tf`
+
+The current `user_data_plugin_string` validation checks each complete `+`-separated entry against `available_user_data_plugins`. It does not remove the `:version` suffix before checking the plugin name.
+
+As a result, a value such as:
+
+```hcl
+user_data_plugin_string = "docker:27.5.1"
+```
+
+will fail the current validation if `available_user_data_plugins` contains `docker` rather than `docker:27.5.1`.
+
+The version parsing in `ec2.tf` is present, but the current variable validation must also be updated to validate the plugin name separately from its version before versioned selections can pass Terraform validation.
+
+The current validation also checks duplicates using the complete plugin entries. It can therefore treat `docker` and `docker:27.5.1` as different entries even though both select the same plugin. Prefer validating uniqueness using parsed plugin names.
+
+#### Version support by installation script
+
+Each plugin script must explicitly handle `PLUGIN_VERSION`. For example, a script can use the requested version when it is non-empty and otherwise use its default installation method:
+
+```bash
+if [ -n "${PLUGIN_VERSION:-}" ]; then
+    echo "Requested version: ${PLUGIN_VERSION}"
+    # Install the requested version here.
+else
+    echo "No version requested; using the script's default version."
+    # Install the default version here.
+fi
+```
+
+This is an illustrative pattern, not a claim that every existing plugin script already implements it.
+
+**Shell-safety note:** `ec2.tf` currently places the version inside single quotes in a generated shell command. Validate version strings to allow only expected version characters (for example, letters, digits, dots, underscores, plus signs, and hyphens) so that a value cannot break out of the quoted shell assignment.
+
+### Adding a New Plugin
+
+1. Create a shell script inside `ud-plugins/`.
+2. Implement the installation and verification logic.
+3. Add the plugin name to `available_user_data_plugins` in `terraform.tfvars`, if that variable is used by the current configuration.
+4. Select the plugin using `user_data_plugin_string`.
+5. If explicit version support is added, implement and test `PLUGIN_VERSION` handling in both Terraform and the installation script.
+
+For example, `ud-plugins/nginx.sh` could be selected using:
+
+```hcl
+user_data_plugin_string = "nginx"
+```
+
+A versioned selection such as `nginx:1.26.0` should only be used after version parsing and injection have been implemented.
 
 ## Project Structure
+
+The following structure reflects the files and plugin scripts identified in the supplied README. Runtime installation logs are created on the EC2 instance and are therefore not shown as a repository directory here.
 
 ```text
 aws-terraform-modular-ec2/
 │
 ├── ud-plugins/
+│   ├── ansible.sh
+│   ├── argocd.sh
+│   ├── awscli.sh
 │   ├── docker.sh
-│   └── kind+kubectl.sh
+│   ├── go.sh
+│   ├── helm.sh
+│   ├── java.sh
+│   ├── jenkins.sh
+│   ├── kind_k8s.sh
+│   ├── kubectl.sh
+│   └── terraform.sh
 │
 ├── .gitignore
 ├── data-source.tf
@@ -85,19 +207,19 @@ aws-terraform-modular-ec2/
 ├── outputs.tf
 ├── provider.tf
 ├── security_groups.tf
-|
+│
 ├── launch_ec2.bat
 ├── destroy_ec2.bat
 ├── launch_ec2.sh
 ├── destroy_ec2.sh
-|
+│
 ├── terraform.tf
 ├── terraform.tfvars
 ├── variables.tf
 └── README.md
 ```
 
-> The exact Terraform filenames may vary as the project evolves.
+> This tree is based on the files named in the supplied README, not a fresh inspection of the repository. Add or remove entries to match the actual checked-in files. The `logs/` directory is intentionally omitted because the README describes logs being generated on the EC2 instance.
 
 ## Prerequisites
 
@@ -169,6 +291,7 @@ tfplan
 .terraform/
 crash.log
 crash.*.log
+logs/
 ```
 
 You can commit `.terraform.lock.hcl` to help keep provider selections consistent across environments.
@@ -280,54 +403,131 @@ terraform init
 
 This initializes the Terraform working directory and downloads the required providers.
 
-### 9. Select a User Data Plugin
+### 9. Select User Data Plugins and Versions
 
-One of the main features of this project is variable-driven User Data script selection.
+The `user_data_plugin_string` variable is used to select the software installation scripts that should execute during EC2 initialization. The supplied `ec2.tf` parses optional version suffixes and injects `PLUGIN_VERSION`; however, the current `variables.tf` validation must be fixed before versioned entries will pass validation.
 
-Instead of modifying the EC2 resource or maintaining separate Terraform configurations, change the `user_data_plugin` variable in `terraform.tfvars`.
+You can select a single plugin or combine multiple plugins using `+`.
 
-#### Example: Docker installation
-
-```hcl
-user_data_plugin = "docker"
-machine_type     = "t3.micro"
-volume_size      = 10
-```
-
-#### Example: Kubernetes tools installation
+#### Example 1: Docker
 
 ```hcl
-user_data_plugin = "kind+kubectl"
-machine_type     = "t3.medium"
-volume_size      = 30
+user_data_plugin_string = "docker"
+machine_type            = "t3.micro"
+volume_size             = 10
 ```
 
-Terraform selects the matching shell script using the configured variable. The EC2 resource can use an expression such as:
+#### Example 2: Multiple plugins
 
 ```hcl
-user_data = file("${path.module}/ud-plugins/${var.user_data_plugin}.sh")
+user_data_plugin_string = "docker+go+terraform"
 ```
 
-The mapping is:
-
-| Variable value | Script selected |
-|---|---|
-| `docker` | `ud-plugins/docker.sh` |
-| `kind+kubectl` | `ud-plugins/kind+kubectl.sh` |
-
-To add another installation option:
-
-1. Create a new `.sh` script inside `ud-plugins/`.
-2. Add the required installation and configuration commands to it.
-3. Set `user_data_plugin` to the script filename without the `.sh` extension.
-
-For example, `ud-plugins/nginx.sh` can be selected with:
+#### Example 3: Kubernetes development environment
 
 ```hcl
-user_data_plugin = "nginx"
+user_data_plugin_string = "docker+kind_k8s+kubectl+helm"
+machine_type            = "t3.medium"
+volume_size             = 30
 ```
 
-**Make sure the selected script exists before running Terraform.**
+#### Versioned configuration examples (proposed)
+
+Terraform parses these version suffixes and injects them through `PLUGIN_VERSION`. However, the current `variables.tf` validation rejects versioned entries until it is updated to validate the plugin name separately. The selected installation scripts must also implement support for `PLUGIN_VERSION`.
+
+```hcl
+user_data_plugin_string = "docker:VERSION"
+```
+
+```hcl
+user_data_plugin_string = "docker:VERSION+go:VERSION+terraform:VERSION"
+```
+
+```hcl
+user_data_plugin_string = "docker+go:VERSION+terraform:VERSION+kubectl:VERSION"
+```
+
+Replace `VERSION` with a version that the relevant installation script can install.
+
+#### How It Works
+
+The supplied `ec2.tf` uses Terraform locals to build the EC2 User Data content:
+
+- `local.user_data_plugins` parses the `user_data_plugin_string` into plugin names and version strings.
+- `local.user_data` loads each corresponding shell script using `file("${path.module}/ud-plugins/${plugin.name}.sh")`.
+- Before each script's contents, Terraform adds `export PLUGIN_VERSION='<version>'`.
+- The generated script contents are joined together and assigned to `aws_instance.tfserver1.user_data`.
+
+The version variable is exported immediately before each plugin script. Since the scripts are concatenated into the generated User Data, each script runs after its corresponding version assignment.
+
+### Plugin Execution Workflow
+
+The following workflow reflects the supplied `ec2.tf` implementation:
+
+```text
+terraform.tfvars
+      |
+      v
+user_data_plugin_string
+Example: docker+go:1.23.4+terraform:1.9.8
+      |
+      v
+local.user_data_plugins
+      |
+      +--> Split entries using "+"
+      +--> Extract plugin name using ":"
+      +--> Extract optional version
+      |
+      v
+local.user_data
+      |
+      +--> Load ud-plugins/<plugin-name>.sh
+      +--> Add export PLUGIN_VERSION='<version>'
+      +--> Join each plugin's command and script content
+      |
+      v
+aws_instance.tfserver1.user_data
+      |
+      v
+EC2 instance initialization
+      |
+      +--> Set PLUGIN_VERSION for selected plugin
+      +--> Execute that plugin's installation script
+      +--> Repeat for the next selected plugin
+      |
+      v
+Installation logs and software verification
+```
+
+**Current implementation caveat:** `ec2.tf` parses versions and injects `PLUGIN_VERSION`, but the supplied `variables.tf` validation currently rejects versioned entries because it compares the full `plugin:version` string with the available plugin names. Update that validation before using versioned selections. Also verify that each installation script actually consumes `PLUGIN_VERSION`; injection alone does not make a script version-aware.
+
+## Important Note About User Data Changes
+
+EC2 User Data scripts are generally executed during the initial instance launch.
+
+Changing `user_data_plugin_string` or modifying an installation script does not automatically reinstall software on an existing instance.
+
+Depending on the AWS provider configuration, changing User Data may trigger EC2 instance replacement.
+
+For example, changing:
+
+```hcl
+user_data_plugin_string = "docker+go"
+```
+
+to:
+
+```hcl
+user_data_plugin_string = "docker+go+terraform"
+```
+
+may cause Terraform to replace the existing EC2 instance.
+
+Always review `terraform plan` before applying changes.
+
+For persistent environments, consider using dedicated configuration-management tools or deployment automation instead of relying exclusively on EC2 User Data.
+
+**Make sure every selected plugin has a corresponding `.sh` file inside `ud-plugins/` before running Terraform.**
 
 ### 10. Launch EC2 Using Automation Scripts
 
@@ -345,7 +545,7 @@ Windows users can execute the following batch files from the project directory.
 launch_ec2.bat
 ```
 
-**Stop EC2**
+**Destroy EC2 infrastructure**
 
 ```bat
 destroy_ec2.bat
@@ -398,13 +598,13 @@ The SSH connection uses:
 ssh -i id_ed25519 ubuntu@<AWS-EC2-PUBLIC-IP>
 ```
 
-**Stop EC2**
+**Destroy EC2 infrastructure**
 
 ```bash
 ./destroy_ec2.sh
 ```
 
-This script automatically destroys the Terraform-managed infrastructure.
+This script destroys the Terraform-managed infrastructure.
 
 #### Important Notes
 
@@ -570,7 +770,7 @@ destroy_ec2.bat
 ./destroy_ec2.sh
 ```
 
-Both scripts execute:
+Both scripts are described as executing:
 
 ```bash
 terraform destroy --auto-approve
@@ -586,19 +786,65 @@ terraform destroy
 
 Terraform will display the resources scheduled for deletion and ask for confirmation.
 
-> **Warning:** The automated stop scripts use `-auto-approve`. Always verify your AWS account, region, Terraform workspace, and state before executing them.
+> **Warning:** The automated destroy scripts use `-auto-approve`. Always verify your AWS account, region, Terraform workspace, and state before executing them.
 
 After destruction, check the AWS Console for resources that may exist outside Terraform's management.
 
-## Important Note About User Data Changes
+## Installation Logs
 
-The `user_data` configuration in this project is intended for initial EC2 provisioning.
+Each User Data plugin generates its own installation log during EC2 initialization.
 
-Changing `user_data_plugin` after an instance has already been created does **not** mean Terraform will simply rerun the new installation script on that existing machine. Depending on the AWS provider configuration and resource lifecycle behavior, a User Data change may cause the EC2 instance to be replaced.
+All installation logs are stored on the EC2 instance in:
 
-Always review the Terraform plan before applying a plugin change. If Terraform proposes replacing the instance, remember that replacement can interrupt services and may affect data stored on resources that are not persistent.
+```text
+/home/ubuntu/aws-terraform-modular-ec2/logs/
+```
 
-For repeatable configuration management on existing instances, consider a dedicated configuration-management or deployment approach rather than assuming EC2 User Data will rerun automatically.
+### Available Log Files
+
+| Plugin | Log file |
+|---|---|
+| Docker | `docker-install.log` |
+| Go | `go-install.log` |
+| Ansible | `ansible-install.log` |
+| Argo CD | `argocd-install.log` |
+| AWS CLI | `awscli-install.log` |
+| Helm | `helm-install.log` |
+| Java | `java-install.log` |
+| Jenkins | `jenkins-install.log` |
+| Kind | `kind_k8s-install.log` |
+| kubectl | `kubectl-install.log` |
+| Terraform | `terraform-install.log` |
+
+### Viewing Installation Logs
+
+Connect to your EC2 instance using SSH and navigate to the logs directory:
+
+```bash
+cd /home/ubuntu/aws-terraform-modular-ec2/logs
+```
+
+List available log files:
+
+```bash
+ls -lh
+```
+
+View a specific installation log:
+
+```bash
+cat docker-install.log
+```
+
+Monitor installation progress in real time:
+
+```bash
+tail -f docker-install.log
+```
+
+Each log includes GMT timestamps, installation output, error messages, and installation duration information.
+
+> **Note:** Log files are generated on the EC2 instance. They are not automatically downloaded to your local machine and are not necessarily part of the Git repository.
 
 ## Troubleshooting
 
@@ -675,7 +921,7 @@ Make sure the selected script exists inside `ud-plugins/`.
 For example, this configuration:
 
 ```hcl
-user_data_plugin = "docker"
+user_data_plugin_string = "docker"
 ```
 
 requires this file:
@@ -702,34 +948,37 @@ Also check spelling and capitalization because file paths are case-sensitive on 
 
 ## Future Improvements
 
-- Add more User Data installation plugins.
-- Support additional DevOps tools and technologies.
+- Add more DevOps tool installation plugins.
+- Extend explicit version support to all plugins.
+- Support additional Linux distributions.
 - Introduce reusable Terraform modules.
 - Add automated deployment through GitLab CI/CD.
 - Implement remote Terraform state management.
-- Improve infrastructure validation and security checks.
+- Add automated testing for installation scripts.
+- Improve installation failure reporting and rollback mechanisms.
+- Add automated infrastructure security scanning.
 
 ## Useful Resources
 
 | Resource | Link |
 |---|---|
-| Portfolio | https://connect2sazad.github.io/ |
-| GitLab Repository | https://gitlab.com/connect2sazad/aws-terraform-modular-ec2 |
-| GitHub Repository | https://github.com/connect2sazad/aws-terraform-modular-ec2 |
-| AWS CLI Documentation | https://docs.aws.amazon.com/cli/latest/userguide/ |
-| AWS IAM Documentation | https://docs.aws.amazon.com/iam/ |
-| Amazon EC2 Documentation | https://docs.aws.amazon.com/ec2/ |
-| Terraform Documentation | https://developer.hashicorp.com/terraform/docs |
-| Docker Documentation | https://docs.docker.com/ |
-| Kind Documentation | https://kind.sigs.k8s.io/ |
-| Kubernetes Documentation | https://kubernetes.io/docs/ |
+| Portfolio | <https://connect2sazad.github.io/> |
+| GitLab Repository | <https://gitlab.com/connect2sazad/aws-terraform-modular-ec2> |
+| GitHub Repository | <https://github.com/connect2sazad/aws-terraform-modular-ec2> |
+| AWS CLI Documentation | <https://docs.aws.amazon.com/cli/latest/userguide/> |
+| AWS IAM Documentation | <https://docs.aws.amazon.com/iam/> |
+| Amazon EC2 Documentation | <https://docs.aws.amazon.com/ec2/> |
+| Terraform Documentation | <https://developer.hashicorp.com/terraform/docs> |
+| Docker Documentation | <https://docs.docker.com/> |
+| Kind Documentation | <https://kind.sigs.k8s.io/> |
+| Kubernetes Documentation | <https://kubernetes.io/docs/> |
 
 ## Author
 
 **Sazad**
 
-- **Portfolio:** https://connect2sazad.github.io/
-- **GitHub:** https://github.com/connect2sazad
-- **GitLab:** https://gitlab.com/connect2sazad
+- **Portfolio:** <https://connect2sazad.github.io/>
+- **GitHub:** <https://github.com/connect2sazad>
+- **GitLab:** <https://gitlab.com/connect2sazad>
 
 If you find this project useful, consider giving the repository a ⭐.
