@@ -1,8 +1,8 @@
-# AWS Terraform Modular EC2 Infrastructure
+# AWS Terraform Modular EC2 Infrastructure v1.0.1
 
 Automate the provisioning and initial configuration of AWS EC2 instances with Terraform and reusable, variable-driven User Data scripts.
 
-This project uses a reusable Terraform configuration to provision EC2 infrastructure and install different tools by selecting User Data plugin scripts. The selected plugins are configured through Terraform variables, allowing multiple tools to be installed on one EC2 instance.
+This project uses a reusable Terraform configuration to provision EC2 infrastructure and install different tools by selecting User Data talent scripts. The selected talents are configured through Terraform variables, allowing multiple tools to be installed on one EC2 instance.
 
 **Portfolio:** <https://connect2sazad.github.io/>  
 **GitLab:** <https://gitlab.com/connect2sazad/aws-terraform-modular-ec2>  
@@ -13,11 +13,11 @@ This project uses a reusable Terraform configuration to provision EC2 infrastruc
 ## Table of Contents
 
 - [Features](#features)
-- [Available User Data Plugins](#available-user-data-plugins)
-  - [Supported Plugins](#supported-plugins)
-  - [Plugin Selection Syntax](#plugin-selection-syntax)
+- [Available User Data Talents](#available-user-data-talents)
+  - [Supported Talents](#supported-talents)
+  - [Talent Selection Syntax](#talent-selection-syntax)
   - [Version Selection Behavior](#version-selection-behavior)
-  - [Adding a New Plugin](#adding-a-new-plugin)
+  - [Adding a New Talent](#adding-a-new-talent)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
@@ -29,7 +29,7 @@ This project uses a reusable Terraform configuration to provision EC2 infrastruc
   - [6. Configure AWS CLI](#6-configure-aws-cli)
   - [7. Install Terraform](#7-install-terraform)
   - [8. Initialize Terraform](#8-initialize-terraform)
-  - [9. Select User Data Plugins and Versions](#9-select-user-data-plugins-and-versions)
+  - [9. Select User Data Talents and Versions](#9-select-user-data-talents-and-versions)
   - [10. Launch EC2 Using Automation Scripts](#10-launch-ec2-using-automation-scripts)
   - [11. Validate the Configuration](#11-validate-the-configuration)
   - [12. Create a Terraform Plan](#12-create-a-terraform-plan)
@@ -38,7 +38,7 @@ This project uses a reusable Terraform configuration to provision EC2 infrastruc
   - [15. Verify the Installation](#15-verify-the-installation)
   - [16. Destroy the Infrastructure](#16-destroy-the-infrastructure)
 - [How It Works](#how-it-works)
-- [Plugin Execution Workflow](#plugin-execution-workflow)
+- [Talent Execution Workflow](#talent-execution-workflow)
 - [Important Note About User Data Changes](#important-note-about-user-data-changes)
 - [Installation Logs](#installation-logs)
 - [Troubleshooting](#troubleshooting)
@@ -50,9 +50,9 @@ This project uses a reusable Terraform configuration to provision EC2 infrastruc
 ## Features
 
 - Modular, reusable Terraform infrastructure.
-- Variable-driven User Data plugin selection.
-- Terraform-side parsing of optional plugin version values and `PLUGIN_VERSION` injection.
-- Support for selecting multiple installation plugins for one EC2 instance.
+- Variable-driven User Data talent selection.
+- Terraform-side parsing of optional talent version values and `PLUGIN_VERSION` injection.
+- Support for selecting multiple installation talents for one EC2 instance.
 - Reusable and independently maintained installation scripts.
 - Configurable EC2 instance types and EBS volume sizes.
 - Customizable EC2 instance names, roles, and environments.
@@ -65,13 +65,13 @@ This project uses a reusable Terraform configuration to provision EC2 infrastruc
 
 > **Version support status:** Terraform parses optional version suffixes and injects `PLUGIN_VERSION`. The current variable validation needs a fix before versioned entries are accepted, and each installation script must independently implement the requested-version behavior.
 
-## Available User Data Plugins
+## Available User Data Talents
 
-The `ud-plugins/` directory contains reusable shell scripts responsible for installing and configuring software on the EC2 instance.
+The `talents/` directory contains reusable shell scripts responsible for installing and configuring software on the EC2 instance.
 
-### Supported Plugins
+### Supported Talents
 
-| Plugin | Description |
+| Talent | Description |
 |---|---|
 | `ansible` | Installs Ansible, Python, Boto3, Botocore, and AWS Ansible collection. |
 | `argocd` | Installs the Argo CD CLI. |
@@ -85,17 +85,17 @@ The `ud-plugins/` directory contains reusable shell scripts responsible for inst
 | `kubectl` | Installs Kubernetes kubectl CLI. |
 | `terraform` | Installs HashiCorp Terraform. |
 
-### Plugin Selection Syntax
+### Talent Selection Syntax
 
-The plugin selection string is configured through `user_data_plugin_string`.
+The talent selection string is configured through `user_data_talent_string`.
 
-Use `+` to combine plugins. Use `:` to separate a plugin name from its requested version:
+Use `+` to combine talents. Use `:` to separate a talent name from its requested version:
 
 ```text
-plugin_name
-plugin_name:version
-plugin_name+plugin_name
-plugin_name:version+plugin_name:version
+talent_name
+talent_name:version
+talent_name+talent_name
+talent_name:version+talent_name:version
 ```
 
 **Examples:**
@@ -112,41 +112,41 @@ The version values above are examples. Use versions that the corresponding insta
 
 ### Version Selection Behavior
 
-The Terraform configuration in `ec2.tf` parses the plugin selection string and injects a `PLUGIN_VERSION` environment variable before each selected script.
+The Terraform configuration in `ec2.tf` parses the talent selection string and injects a `PLUGIN_VERSION` environment variable before each selected script.
 
 The implementation works as follows:
 
-1. `split("+", var.user_data_plugin_string)` separates the selected plugins.
-2. `trimspace(plugin)` removes surrounding whitespace from each plugin entry.
-3. `split(":", ...)` separates the plugin name from its optional version.
-4. The plugin name is used to load `ud-plugins/<plugin-name>.sh`.
-5. Terraform generates an `export PLUGIN_VERSION='<version>'` command immediately before that plugin's script content.
+1. `split("+", var.user_data_talent_string)` separates the selected talents.
+2. `trimspace(talent)` removes surrounding whitespace from each talent entry.
+3. `split(":", ...)` separates the talent name from its optional version.
+4. The talent name is used to load `talents/<talent-name>.sh`.
+5. Terraform generates an `export PLUGIN_VERSION='<version>'` command immediately before that talent's script content.
 6. `join("\n", ...)` combines the generated commands and script contents into `local.user_data`.
 7. The EC2 instance executes the generated User Data during initialization.
 
-For an unversioned plugin, Terraform sets `PLUGIN_VERSION` to an empty string. The installation script should treat an empty value as a request to use its default installation behavior.
+For an unversioned talent, Terraform sets `PLUGIN_VERSION` to an empty string. The installation script should treat an empty value as a request to use its default installation behavior.
 
-**Important distinction:** Terraform's version parsing and environment-variable injection are implemented. Actual explicit version installation depends on each plugin script reading `PLUGIN_VERSION` and using it in its installation commands. Do not claim that every plugin supports every version until each script has been checked and tested.
+**Important distinction:** Terraform's version parsing and environment-variable injection are implemented. Actual explicit version installation depends on each talent script reading `PLUGIN_VERSION` and using it in its installation commands. Do not claim that every talent supports every version until each script has been checked and tested.
 
 #### Important validation limitation in the supplied `variables.tf`
 
-The current `user_data_plugin_string` validation checks each complete `+`-separated entry against `available_user_data_plugins`. It does not remove the `:version` suffix before checking the plugin name.
+The current `user_data_talent_string` validation checks each complete `+`-separated entry against `available_user_data_talents`. It does not remove the `:version` suffix before checking the talent name.
 
 As a result, a value such as:
 
 ```hcl
-user_data_plugin_string = "docker:27.5.1"
+user_data_talent_string = "docker:27.5.1"
 ```
 
-will fail the current validation if `available_user_data_plugins` contains `docker` rather than `docker:27.5.1`.
+will fail the current validation if `available_user_data_talents` contains `docker` rather than `docker:27.5.1`.
 
-The version parsing in `ec2.tf` is present, but the current variable validation must also be updated to validate the plugin name separately from its version before versioned selections can pass Terraform validation.
+The version parsing in `ec2.tf` is present, but the current variable validation must also be updated to validate the talent name separately from its version before versioned selections can pass Terraform validation.
 
-The current validation also checks duplicates using the complete plugin entries. It can therefore treat `docker` and `docker:27.5.1` as different entries even though both select the same plugin. Prefer validating uniqueness using parsed plugin names.
+The current validation also checks duplicates using the complete talent entries. It can therefore treat `docker` and `docker:27.5.1` as different entries even though both select the same talent. Prefer validating uniqueness using parsed talent names.
 
 #### Version support by installation script
 
-Each plugin script must explicitly handle `PLUGIN_VERSION`. For example, a script can use the requested version when it is non-empty and otherwise use its default installation method:
+Each talent script must explicitly handle `PLUGIN_VERSION`. For example, a script can use the requested version when it is non-empty and otherwise use its default installation method:
 
 ```bash
 if [ -n "${PLUGIN_VERSION:-}" ]; then
@@ -158,34 +158,34 @@ else
 fi
 ```
 
-This is an illustrative pattern, not a claim that every existing plugin script already implements it.
+This is an illustrative pattern, not a claim that every existing talent script already implements it.
 
 **Shell-safety note:** `ec2.tf` currently places the version inside single quotes in a generated shell command. Validate version strings to allow only expected version characters (for example, letters, digits, dots, underscores, plus signs, and hyphens) so that a value cannot break out of the quoted shell assignment.
 
-### Adding a New Plugin
+### Adding a New Talent
 
-1. Create a shell script inside `ud-plugins/`.
+1. Create a shell script inside `talents/`.
 2. Implement the installation and verification logic.
-3. Add the plugin name to `available_user_data_plugins` in `terraform.tfvars`, if that variable is used by the current configuration.
-4. Select the plugin using `user_data_plugin_string`.
+3. Add the talent name to `available_user_data_talents` in `terraform.tfvars`, if that variable is used by the current configuration.
+4. Select the talent using `user_data_talent_string`.
 5. If explicit version support is added, implement and test `PLUGIN_VERSION` handling in both Terraform and the installation script.
 
-For example, `ud-plugins/nginx.sh` could be selected using:
+For example, `talents/nginx.sh` could be selected using:
 
 ```hcl
-user_data_plugin_string = "nginx"
+user_data_talent_string = "nginx"
 ```
 
 A versioned selection such as `nginx:1.26.0` should only be used after version parsing and injection have been implemented.
 
 ## Project Structure
 
-The following structure reflects the files and plugin scripts identified in the supplied README. Runtime installation logs are created on the EC2 instance and are therefore not shown as a repository directory here.
+The following structure reflects the files and talent scripts identified in the supplied README. Runtime installation logs are created on the EC2 instance and are therefore not shown as a repository directory here.
 
 ```text
 aws-terraform-modular-ec2/
 │
-├── ud-plugins/
+├── talents/
 │   ├── ansible.sh
 │   ├── argocd.sh
 │   ├── awscli.sh
@@ -403,48 +403,48 @@ terraform init
 
 This initializes the Terraform working directory and downloads the required providers.
 
-### 9. Select User Data Plugins and Versions
+### 9. Select User Data Talents and Versions
 
-The `user_data_plugin_string` variable is used to select the software installation scripts that should execute during EC2 initialization. The supplied `ec2.tf` parses optional version suffixes and injects `PLUGIN_VERSION`; however, the current `variables.tf` validation must be fixed before versioned entries will pass validation.
+The `user_data_talent_string` variable is used to select the software installation scripts that should execute during EC2 initialization. The supplied `ec2.tf` parses optional version suffixes and injects `PLUGIN_VERSION`; however, the current `variables.tf` validation must be fixed before versioned entries will pass validation.
 
-You can select a single plugin or combine multiple plugins using `+`.
+You can select a single talent or combine multiple talents using `+`.
 
 #### Example 1: Docker
 
 ```hcl
-user_data_plugin_string = "docker"
+user_data_talent_string = "docker"
 machine_type            = "t3.micro"
 volume_size             = 10
 ```
 
-#### Example 2: Multiple plugins
+#### Example 2: Multiple talents
 
 ```hcl
-user_data_plugin_string = "docker+go+terraform"
+user_data_talent_string = "docker+go+terraform"
 ```
 
 #### Example 3: Kubernetes development environment
 
 ```hcl
-user_data_plugin_string = "docker+kind_k8s+kubectl+helm"
+user_data_talent_string = "docker+kind_k8s+kubectl+helm"
 machine_type            = "t3.medium"
 volume_size             = 30
 ```
 
 #### Versioned configuration examples (proposed)
 
-Terraform parses these version suffixes and injects them through `PLUGIN_VERSION`. However, the current `variables.tf` validation rejects versioned entries until it is updated to validate the plugin name separately. The selected installation scripts must also implement support for `PLUGIN_VERSION`.
+Terraform parses these version suffixes and injects them through `PLUGIN_VERSION`. However, the current `variables.tf` validation rejects versioned entries until it is updated to validate the talent name separately. The selected installation scripts must also implement support for `PLUGIN_VERSION`.
 
 ```hcl
-user_data_plugin_string = "docker:VERSION"
+user_data_talent_string = "docker:VERSION"
 ```
 
 ```hcl
-user_data_plugin_string = "docker:VERSION+go:VERSION+terraform:VERSION"
+user_data_talent_string = "docker:VERSION+go:VERSION+terraform:VERSION"
 ```
 
 ```hcl
-user_data_plugin_string = "docker+go:VERSION+terraform:VERSION+kubectl:VERSION"
+user_data_talent_string = "docker+go:VERSION+terraform:VERSION+kubectl:VERSION"
 ```
 
 Replace `VERSION` with a version that the relevant installation script can install.
@@ -453,14 +453,14 @@ Replace `VERSION` with a version that the relevant installation script can insta
 
 The supplied `ec2.tf` uses Terraform locals to build the EC2 User Data content:
 
-- `local.user_data_plugins` parses the `user_data_plugin_string` into plugin names and version strings.
-- `local.user_data` loads each corresponding shell script using `file("${path.module}/ud-plugins/${plugin.name}.sh")`.
+- `local.user_data_talents` parses the `user_data_talent_string` into talent names and version strings.
+- `local.user_data` loads each corresponding shell script using `file("${path.module}/talents/${talent.name}.sh")`.
 - Before each script's contents, Terraform adds `export PLUGIN_VERSION='<version>'`.
 - The generated script contents are joined together and assigned to `aws_instance.tfserver1.user_data`.
 
-The version variable is exported immediately before each plugin script. Since the scripts are concatenated into the generated User Data, each script runs after its corresponding version assignment.
+The version variable is exported immediately before each talent script. Since the scripts are concatenated into the generated User Data, each script runs after its corresponding version assignment.
 
-### Plugin Execution Workflow
+### Talent Execution Workflow
 
 The following workflow reflects the supplied `ec2.tf` implementation:
 
@@ -468,22 +468,22 @@ The following workflow reflects the supplied `ec2.tf` implementation:
 terraform.tfvars
       |
       v
-user_data_plugin_string
+user_data_talent_string
 Example: docker+go:1.23.4+terraform:1.9.8
       |
       v
-local.user_data_plugins
+local.user_data_talents
       |
       +--> Split entries using "+"
-      +--> Extract plugin name using ":"
+      +--> Extract talent name using ":"
       +--> Extract optional version
       |
       v
 local.user_data
       |
-      +--> Load ud-plugins/<plugin-name>.sh
+      +--> Load talents/<talent-name>.sh
       +--> Add export PLUGIN_VERSION='<version>'
-      +--> Join each plugin's command and script content
+      +--> Join each talent's command and script content
       |
       v
 aws_instance.tfserver1.user_data
@@ -491,34 +491,34 @@ aws_instance.tfserver1.user_data
       v
 EC2 instance initialization
       |
-      +--> Set PLUGIN_VERSION for selected plugin
-      +--> Execute that plugin's installation script
-      +--> Repeat for the next selected plugin
+      +--> Set PLUGIN_VERSION for selected talent
+      +--> Execute that talent's installation script
+      +--> Repeat for the next selected talent
       |
       v
 Installation logs and software verification
 ```
 
-**Current implementation caveat:** `ec2.tf` parses versions and injects `PLUGIN_VERSION`, but the supplied `variables.tf` validation currently rejects versioned entries because it compares the full `plugin:version` string with the available plugin names. Update that validation before using versioned selections. Also verify that each installation script actually consumes `PLUGIN_VERSION`; injection alone does not make a script version-aware.
+**Current implementation caveat:** `ec2.tf` parses versions and injects `PLUGIN_VERSION`, but the supplied `variables.tf` validation currently rejects versioned entries because it compares the full `talent:version` string with the available talent names. Update that validation before using versioned selections. Also verify that each installation script actually consumes `PLUGIN_VERSION`; injection alone does not make a script version-aware.
 
 ## Important Note About User Data Changes
 
 EC2 User Data scripts are generally executed during the initial instance launch.
 
-Changing `user_data_plugin_string` or modifying an installation script does not automatically reinstall software on an existing instance.
+Changing `user_data_talent_string` or modifying an installation script does not automatically reinstall software on an existing instance.
 
 Depending on the AWS provider configuration, changing User Data may trigger EC2 instance replacement.
 
 For example, changing:
 
 ```hcl
-user_data_plugin_string = "docker+go"
+user_data_talent_string = "docker+go"
 ```
 
 to:
 
 ```hcl
-user_data_plugin_string = "docker+go+terraform"
+user_data_talent_string = "docker+go+terraform"
 ```
 
 may cause Terraform to replace the existing EC2 instance.
@@ -527,7 +527,7 @@ Always review `terraform plan` before applying changes.
 
 For persistent environments, consider using dedicated configuration-management tools or deployment automation instead of relying exclusively on EC2 User Data.
 
-**Make sure every selected plugin has a corresponding `.sh` file inside `ud-plugins/` before running Terraform.**
+**Make sure every selected talent has a corresponding `.sh` file inside `talents/` before running Terraform.**
 
 ### 10. Launch EC2 Using Automation Scripts
 
@@ -630,7 +630,7 @@ Before proceeding, check:
 - EC2 instance type.
 - SSH public key path.
 - Security group rules.
-- Selected User Data plugin and script path.
+- Selected User Data talent and script path.
 
 Ensure SSH access on port `22` is restricted to your trusted public IP address rather than exposed to the entire internet.
 
@@ -656,7 +656,7 @@ terraform apply tfplan
 
 Terraform provisions the AWS resources defined in the configuration.
 
-During the EC2 instance's initial launch, the instance executes the selected User Data script. Depending on the selected plugin, the corresponding tools are installed automatically.
+During the EC2 instance's initial launch, the instance executes the selected User Data script. Depending on the selected talent, the corresponding tools are installed automatically.
 
 Wait for Terraform to finish successfully.
 
@@ -694,7 +694,7 @@ chmod 600 id_ed25519
 
 ### 15. Verify the Installation
 
-The verification steps depend on the selected User Data plugin.
+The verification steps depend on the selected User Data talent.
 
 #### Docker
 
@@ -740,7 +740,7 @@ Check Kind:
 kind version
 ```
 
-If your plugin creates a Kind cluster, list the clusters:
+If your talent creates a Kind cluster, list the clusters:
 
 ```bash
 kind get clusters
@@ -752,7 +752,7 @@ Check Kubernetes nodes:
 kubectl get nodes
 ```
 
-Refer to the selected plugin script for the exact installation and cluster initialization steps. The commands above verify the tools and, where applicable, the cluster created by the script.
+Refer to the selected talent script for the exact installation and cluster initialization steps. The commands above verify the tools and, where applicable, the cluster created by the script.
 
 ### 16. Destroy the Infrastructure
 
@@ -792,7 +792,7 @@ After destruction, check the AWS Console for resources that may exist outside Te
 
 ## Installation Logs
 
-Each User Data plugin generates its own installation log during EC2 initialization.
+Each User Data talent generates its own installation log during EC2 initialization.
 
 All installation logs are stored on the EC2 instance in:
 
@@ -802,7 +802,7 @@ All installation logs are stored on the EC2 instance in:
 
 ### Available Log Files
 
-| Plugin | Log file |
+| Talent | Log file |
 |---|---|
 | Docker | `docker-install.log` |
 | Go | `go-install.log` |
@@ -914,20 +914,20 @@ Review recent Docker service logs:
 sudo journalctl -u docker --no-pager -n 100
 ```
 
-### Selected plugin file not found
+### Selected talent file not found
 
-Make sure the selected script exists inside `ud-plugins/`.
+Make sure the selected script exists inside `talents/`.
 
 For example, this configuration:
 
 ```hcl
-user_data_plugin_string = "docker"
+user_data_talent_string = "docker"
 ```
 
 requires this file:
 
 ```text
-ud-plugins/docker.sh
+talents/docker.sh
 ```
 
 Also check spelling and capitalization because file paths are case-sensitive on Linux.
@@ -948,8 +948,8 @@ Also check spelling and capitalization because file paths are case-sensitive on 
 
 ## Future Improvements
 
-- Add more DevOps tool installation plugins.
-- Extend explicit version support to all plugins.
+- Add more DevOps tool installation talents.
+- Extend explicit version support to all talents.
 - Support additional Linux distributions.
 - Introduce reusable Terraform modules.
 - Add automated deployment through GitLab CI/CD.

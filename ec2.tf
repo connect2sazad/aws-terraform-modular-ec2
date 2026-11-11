@@ -1,26 +1,54 @@
 # creating ec2 instance
 locals {
-  user_data_plugins = [
-    for plugin in split("+", var.user_data_plugin_string) : {
-      name = split(":", trimspace(plugin))[0]
+  user_data_talents = [
+    for talent in split("+", var.user_data_talent_string) : {
+      name = split(":", trimspace(talent))[0]
 
       version = (
-        length(split(":", trimspace(plugin))) > 1
-        ? split(":", trimspace(plugin))[1]
+        length(split(":", trimspace(talent))) > 1
+        ? split(":", trimspace(talent))[1]
         : ""
       )
     }
   ]
 
-  user_data = join("\n", [
-    for plugin in local.user_data_plugins :
-    format(
-      "export PLUGIN_VERSION='%s'\n%s",
-      plugin.version,
-      file("${path.module}/ud-plugins/${plugin.name}.sh")
-    )
-  ])
+  user_data = join("\n", concat(
+    [
+      "#!/bin/bash",
+      "set -euxo pipefail",
+
+      # Create log directory
+      "mkdir -p /home/ubuntu/aws-terraform-modular-ec2/logs",
+
+      # Set directory ownership
+      "chown -R ubuntu:ubuntu /home/ubuntu/aws-terraform-modular-ec2"
+    ],
+
+    flatten([
+      for talent in local.user_data_talents : [
+        format(
+          "export talent_VERSION='%s'",
+          talent.version
+        ),
+
+        replace(
+          replace(
+            replace(
+              file("${path.module}/talents/${talent.name}.sh"),
+              "\r\n",
+              "\n"
+            ),
+            "\r",
+            "\n"
+          ),
+          "#!/bin/bash\n",
+          ""
+        )
+      ]
+    ])
+  ))
 }
+
 
 resource "aws_instance" "tfserver1" {
   ami                    = data.aws_ami.ubuntu.id
@@ -37,7 +65,7 @@ resource "aws_instance" "tfserver1" {
 
   associate_public_ip_address = true
 
-  # user_data = file("${path.module}/ud-plugins/${var.user_data_plugin}.sh")
+  # user_data = file("${path.module}/talents/${var.user_data_talent}.sh")
   user_data = local.user_data
 
   root_block_device {
